@@ -1,0 +1,30 @@
+  body {
+    margin: 0;
+  }
+  .score {
+    color: blue;
+    font-size: 60px;
+    margin-left: 95%;
+    height: 100px;
+    animation: shine 1s infinite alternate;
+
+	position: fixed;
+  }
+.health {
+  color: red;
+  font-size: 60px;
+  margin-left: 5%;
+  height: 100px;
+  animation: shine 1s infinite alternate;
+
+  position: fixed;
+}
+
+  @keyframes shine {
+    from {
+      text-shadow: none;
+    }
+    to {
+      text-shadow: 0 0 8px rgb(0,0,128), 0 0 16px rgb(0,0,205), 0 0 24px rgb(0,0,255);
+    }
+  }

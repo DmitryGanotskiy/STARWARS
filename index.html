@@ -1,0 +1,821 @@
+  <div class="score"><span>0</span></div>
+<link rel="stylesheet" href="style.css" />
+
+<script
+  async
+  src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"
+></script>
+<script src="controls.js"></script>
+<script src="Sounds.js"></script>
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.150.1/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.150.1/examples/jsm/"
+    }
+  }
+</script>
+
+<script type="module">
+  import * as THREE from 'https://unpkg.com/three@0.150.1/build/three.module.js';
+  import { OrbitControls } from 'https://unpkg.com/three@0.150.1/examples/jsm/controls/OrbitControls.js';
+  import { PointerLockControls } from 'https://unpkg.com/three@0.150.1/examples/jsm/controls/PointerLockControls.js';
+  import { GLTFLoader } from 'https://unpkg.com/three@0.150.1/examples/jsm/loaders/GLTFLoader.js';
+
+    class SkySphere {
+      constructor(radius, textureUrl) {
+        this.radius = radius;
+        this.textureUrl = textureUrl;
+        this.mesh = null;
+      }
+
+      async load() {
+        const loader = new GLTFLoader();
+        const textureLoader = new THREE.TextureLoader();
+
+        const texture = await new Promise((resolve) => {
+          textureLoader.load(this.textureUrl, resolve);
+        });
+
+        const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide });
+
+        const geometry = new THREE.SphereGeometry(this.radius, 64, 64);
+        this.mesh = new THREE.Mesh(geometry, material);
+      }
+
+      addToScene(scene) {
+        if (this.mesh) {
+          scene.add(this.mesh);
+        }
+      }
+    }
+
+
+  const enemies = []
+  const loader = new GLTFLoader()
+  const projectiles = []
+  let target = new THREE.Vector3();
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2()
+  let frames =0
+  let spawmRate = 200
+  let spaceship;
+  let spaceshipHealth = 100
+  let geometryHealth 
+  let materialHealth 
+  let planeHealth
+  let starDestroyer;
+  let enemyDroid
+  let asteroid
+  const asteroids = [];
+  let elapsedTime = 0
+  let animationId=null;
+  const offset = new THREE.Vector3(0, 1.5, -6);
+  const direction = new THREE.Vector3()
+  let lastShotTime = Date.now(); // Track the last shot time
+  const minShotInterval = 1000; // Minimum time between shots in milliseconds
+  const maxShotInterval = 5000; // Maximum time between shots in milliseconds
+  let random;
+  let ifLoop = false
+  //bounding masks for the spaceship and starDestroyer
+  const sound = new Sound()
+  const numbers = Array.from({ length: 20 }, (_, index) => index - 10);
+  let skyBorders = {
+    x:500, y:60, z:40 
+  } 
+  const textureUrlsExplosion = [
+    'img/explosion/img_0.png',
+    'img/explosion/img_2.png',
+    'img/explosion/img_4.png',
+    'img/explosion/img_6.png',
+    'img/explosion/img_8.png',
+    'img/explosion/img_10.png',
+    'img/explosion/img_12.png',
+    'img/explosion/img_14.png',
+    'img/explosion/img_16.png',
+    'img/explosion/img_18.png',
+    'img/explosion/img_20.png',
+    'img/explosion/img_22.png',
+    'img/explosion/img_24.png',
+    'img/explosion/img_26.png',
+    'img/explosion/img_28.png'
+  ];
+
+  loader.load('objects/starDestroyer/scene.gltf',function (gltf) {
+    starDestroyer = gltf.scene;
+
+    starDestroyer.position.set(100, -100, -100);
+    starDestroyer.scale.set(20, 20, 20);
+    starDestroyer.rotation.set(0, 1, 0);
+    starDestroyer.boundingBox = new THREE.Box3().setFromObject(starDestroyer);
+    scene.add(starDestroyer);
+    checkCollision()
+
+    }, undefined, function (error) {
+      console.error(error);
+  });
+  loader.load('objects/spaceship/spaceship.gltf', async function (gltf) {
+    for (let i = 0; i <= 5; i++) 
+      await createEnemy(); // Call the createEnemy function here
+    spaceship = gltf.scene;
+
+    spaceshipSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    spaceship.position.set(0, 200, 10);
+    spaceship.scale.set(0.5, 0.5, 0.5);
+    spaceship.boundingBox = new THREE.Box3().setFromObject(spaceship);
+    spaceship.speed = 0.5
+    scene.add(spaceship);
+    setInterval(function(){setupImageTextLoop()}, 10000)
+    sound.play('ambient', 'music')
+    setInterval(function(){sound.play('ambient', 'music')}, 238000);
+    animate();
+    }, undefined, function (error) {
+      console.error(error);
+      spaceship.add(aimMesh);
+      aimMesh.position.set(0, 0, -5);
+  });
+  loader.load('objects/asteroid/scene.gltf', async function(gltf) {
+    const asteroidModel = gltf.scene;
+
+    // Generate a random number of asteroids (between 5 and 10)
+    const numAsteroids = Math.floor(Math.random() * 6) + 10;
+
+    for (let i = 0; i < numAsteroids; i++) {
+      // Create a clone of the asteroid model
+      const asteroid = asteroidModel.clone();
+
+      // Generate random positions for the asteroid
+      const x = Math.random() * 800 - 400;
+      const y = Math.random() * 800 - 400;
+      const z = Math.random() * 800 - 400;
+
+      // Set the position, scale, and rotation of the asteroid
+      asteroid.position.set(x, y, z);
+      asteroid.scale.set(20, 20, 20);
+      asteroid.rotation.set(0, 1, 0);
+      asteroid.boundingBox = new THREE.Box3().setFromObject(asteroid);
+
+      // Add the asteroid to the scene
+      scene.add(asteroid);
+
+      // Store the asteroid in the array
+      asteroids.push(asteroid);
+    }
+    }, undefined, function(error) {
+      console.error(error);
+  });
+
+  const scene = new THREE.Scene()
+  const camera = new THREE.PerspectiveCamera(
+    75,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+  )
+//aim
+let aimTexture = new THREE.TextureLoader().load('img/aim1.png');
+let aimMaterial = new THREE.MeshBasicMaterial({ map: aimTexture, transparent: true, alphaTest: 0.5 });
+const aimGeometry = new THREE.PlaneGeometry(2, 2);
+const aimMesh = new THREE.Mesh(aimGeometry, aimMaterial);
+scene.add(aimMesh);
+
+const enemyMarkLoader = new THREE.TextureLoader();
+const enemyMark = enemyMarkLoader.load('img/enemy.png');
+  // Create a material with the image texture
+const materialEnemyMark = new THREE.MeshBasicMaterial({ map: enemyMark, transparent: true});
+  // Create a geometry (e.g., PlaneGeometry)
+const geometryEnemyMark = new THREE.PlaneGeometry(4, 4);
+  // Create a mesh with the geometry and material
+
+  const renderer = new THREE.WebGLRenderer()
+  renderer.shadowMap.enabled = true
+  renderer.setSize(window.innerWidth, window.innerHeight)
+  document.body.appendChild(renderer.domElement)
+
+  const controls = new OrbitControls(camera, renderer.domElement)
+
+    const skySphere = new SkySphere(150, 'img/planet_texture.jpg');
+    skySphere.load().then(() => {
+      skySphere.mesh.position.z = 340;
+      skySphere.addToScene(scene);
+    });
+
+  const light = new THREE.DirectionalLight(0xffffff, 1)
+  light.position.z = 3
+  light.position.y=1
+  light.castShadow = true
+  scene.add(light)
+  scene.add(new THREE.AmbientLight(0xffffff, 0.4))
+
+  function createStarryTexture() {
+    const textureLoader = new THREE.TextureLoader()
+    const texture = textureLoader.load('img/space.jpg')
+    return texture
+  }
+  const skyGeometry = new THREE.SphereGeometry(skyBorders.x, skyBorders.y, skyBorders.z);
+  const starryTexture = createStarryTexture();
+  const skyMaterial = new THREE.MeshBasicMaterial({ map: starryTexture, side: THREE.BackSide});
+  const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+
+  scene.add(sky)
+
+  const bulletGeometry = new THREE.SphereGeometry(0.1, 16, 16)
+ const bulletMaterial = new THREE.MeshBasicMaterial({
+  color: 'red',
+  transparent: true,
+  opacity: 0.8,
+});
+
+let soundTimer = null;
+
+window.addEventListener('keydown', (event) => {
+  switch (event.code) {
+    case 'KeyA':
+      keys.a.pressed = true;
+      break;
+    case 'KeyD':
+      keys.d.pressed = true;
+      break;
+    case 'KeyW':
+      keys.w.pressed = true;
+
+      if (!soundTimer) {
+        sound.play('ambient', 'engine');
+        soundTimer = setInterval(() => {
+          sound.play('ambient', 'engine');
+        }, 21000); // Repeat the sound every 21 seconds
+      }
+      break;
+    case 'KeyS':
+      if(ifLoop)ifLoop=false
+      else ifLoop = true
+      break;
+  }
+});
+
+window.addEventListener('keyup', (event) => {
+  switch (event.code) {
+    case 'KeyA':
+      keys.a.pressed = false;
+      break;
+    case 'KeyD':
+      keys.d.pressed = false;
+      break;
+    case 'KeyW':
+      keys.w.pressed = false;
+      
+      // Clear the sound timer when the 'W' button is released
+      if (soundTimer) {
+        clearInterval(soundTimer);
+        soundTimer = null;
+      }
+      break;
+  }
+}); 
+
+function calculateBoundingBox(object) {
+  const box = new THREE.Box3();
+  const position = new THREE.Vector3();
+  const scale = new THREE.Vector3();
+
+  box.setFromObject(object);
+  box.getCenter(position);
+  box.getSize(scale);
+
+  return { position, scale };
+}
+
+function updateMouseTarget(event) {
+  // Calculate mouse position
+  mouse.x = (event.clientX / window.innerWidth) / 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) / 2 + 1;
+  // Update the picking ray with the camera and mouse position
+  raycaster.setFromCamera(mouse, camera);
+  // Calculate objects intersecting the picking ray
+  const intersects = raycaster.intersectObjects(scene.children);
+  if (intersects.length > 0) {
+    // Update target position
+    target = intersects[0].point;
+  }
+}
+
+window.addEventListener('mousemove', updateMouseTarget);
+  const controls1 = new PointerLockControls(camera, renderer.domElement)
+  document.addEventListener('click', function () {
+      controls1.lock();
+        sound.play('ambient', 'blaster')
+        let bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+        let direction = new THREE.Vector3();
+        camera.getWorldDirection(direction);
+        bullet.position.copy(spaceship.position);
+        bullet.velocity = direction.clone().multiplyScalar(3);
+        bullet.scale.set(1, 1, 50);
+        bullet.lookAt(bullet.position.clone().add(direction));
+        projectiles.push(bullet);
+        scene.add(bullet);
+  }, false)
+
+  const sphereMaterial = new THREE.MeshBasicMaterial({
+    color: 'green',
+    transparent: true,
+    opacity: 0.0,
+  });
+  const sphereGeometry = new THREE.SphereGeometry(2, 32, 32);  // Adjust the radius (1) as needed
+  const sphereGeometryDroid = new THREE.SphereGeometry(3, 32, 32);
+
+  let spaceshipSphere;
+  let enemyDroidSphere;
+  
+function planetCollision(object) {
+  const planetRadius = skySphere.radius;
+  const planetPosition = skySphere.mesh.position;
+
+  if (object.position.distanceTo(planetPosition)-skySphere.radius <=30) {
+    console.log("Collision with planet detected");
+    return true;
+  }
+
+  return false;
+}
+
+function checkCollision() {
+  //if (spaceship.boundingBox.intersectsBox(starDestroyer.boundingBox)) {
+    //console.log("za")
+      setInterval(async function(){
+        if(starDestroyer.position.distanceTo(spaceship.position) <200){
+          //sound.play('ambient', 'blasterEnemy');
+          await starDestroyerBullet(starDestroyer.position.x, starDestroyer.position.y, starDestroyer.position.z, spaceship.position.x, spaceship.position.y, spaceship.position.z);
+          await starDestroyerBullet(starDestroyer.position.x+10, starDestroyer.position.y, starDestroyer.position.z, spaceship.position.x, spaceship.position.y, spaceship.position.z);
+          await starDestroyerBullet(starDestroyer.position.x+20, starDestroyer.position.y, starDestroyer.position.z, spaceship.position.x, spaceship.position.y, spaceship.position.z);
+        }
+      }, 500);
+  //}
+}
+
+
+function skyBoardersCollision(position){
+  const distance = Math.sqrt(
+    Math.pow(position.x, 2) + Math.pow(position.y, 2) + Math.pow(position.z, 2)
+  );
+
+  // Check if the spaceship is outside the sky region
+  return distance +30 > Math.max(skyBorders.x, skyBorders.y, skyBorders.z);
+}
+
+function createEnemy() {
+  return new Promise((resolve, reject) => {
+    const promises = [];
+      const promise = new Promise((resolve, reject) => {
+        loader.load('objects/enemyDroid/scene.gltf', function (gltf) {
+          enemyDroid = gltf.scene;
+          enemyDroid.position.set(
+            Math.floor(Math.random() * (210)) + 1,
+            Math.floor(Math.random() * (210)) + 1,
+            Math.floor(Math.random() * (210)) + 1
+          );
+          enemyDroid.scale.set(0.01, 0.01, 0.01);
+          enemyDroid.addedToScene = false; // Add property to track if it's been added to the scene
+          enemyDroid.x =numbers[Math.floor(Math.random() * numbers.length)]
+          enemyDroid.y =numbers[Math.floor(Math.random() * numbers.length)]
+          enemyDroid.z =numbers[Math.floor(Math.random() * numbers.length)]
+          enemyDroid.flightDirection = new THREE.Vector3(
+            enemyDroid.x, // x-coordinate
+            enemyDroid.y, // y-coordinate
+            enemyDroid.z // z-coordinate
+          ).normalize();
+          enemyDroid.boundingBox = new THREE.Box3().setFromObject(enemyDroid);
+          enemyDroid.health = 100
+          enemyDroid.meshEnemyMark = null
+            setInterval(async function() {
+              await starDestroyerBullet(enemyDroid.position.x+5, enemyDroid.position.y, enemyDroid.position.z, spaceship.position.x, spaceship.position.y, spaceship.position.z);
+            },9000);
+          
+          enemies.push(enemyDroid);
+
+          resolve();
+        }, undefined, function (error) {
+          reject(error);
+        });
+      });
+
+      promises.push(promise);
+    
+    Promise.all(promises)
+      .then(() => resolve())
+      .catch((error) => reject(error));
+  });
+}
+
+function magneticField(object, who, size, form) {
+  const width = object.max.x - object.min.x/form;
+  const height = object.max.y - object.min.y/form;
+  const depth = object.max.z - object.min.z/form;
+
+  const magneticFieldGeometry = new THREE.SphereGeometry(width/size, height/size, depth/size);
+  const magneticFieldTexture = new THREE.TextureLoader().load('img/field.jpg');
+  const magneticFieldMaterial = new THREE.MeshBasicMaterial({ map: magneticFieldTexture, transparent: true, opacity: 0.1 });
+  const magneticFieldMesh = new THREE.Mesh(magneticFieldGeometry, magneticFieldMaterial);
+  magneticFieldMesh.position.copy(who.position);
+  magneticFieldMesh.rotation.copy(who.rotation);
+  scene.add(magneticFieldMesh);
+
+  setTimeout(function () {
+    scene.remove(magneticFieldMesh);
+  }, 200);
+}
+
+  async function enemyShoot(enemyDroid) {
+      await new Promise((resolve) => {
+        const shootingInterval = Math.random() * (4000 - 1000) + 1000; // Random interval between 1-4 seconds
+        setTimeout(() => {
+            const enemyProjectile = new THREE.Mesh(bulletGeometry, bulletMaterial);
+            enemyProjectile.position.copy(enemyDroid.position);
+            let directionToSpaceship = spaceship.position.clone().sub(enemyDroid.position).normalize();
+            enemyProjectile.velocity = directionToSpaceship.multiplyScalar(3);
+            projectiles.push(enemyProjectile);
+            scene.add(enemyProjectile);
+          resolve();
+        }, shootingInterval);
+      });
+  }
+
+function starDestroyerBullet(x1, y1, z1, x2, y2, z2) {
+  const bulletGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+  const bulletMaterial = new THREE.MeshBasicMaterial({
+    color: 'red',
+    transparent: true,
+    opacity: 0.8,
+  });
+  const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+  bullet.position.set(x1, y1, z1);
+
+  const direction = new THREE.Vector3(x2 - x1, y2 - y1, z2 - z1).normalize();
+  bullet.velocity = direction.clone().multiplyScalar(3);
+  bullet.scale.set(1, 1, 50);
+  bullet.lookAt(bullet.position.clone().add(direction));
+
+  scene.add(bullet);
+  projectiles.push(bullet);
+}
+
+let enemyTimer = Math.random() * 6000 + 4000;
+
+async function animate() {
+  animationId = requestAnimationFrame(animate);
+  updateCamera();
+  updateSpaceship();
+  updateProjectiles();
+  updateAimPosition();
+  updateEnemies();
+  updateAsteroids()
+  healthBar()
+  if(spaceshipHealth<=0){
+    cancelAnimationFrame(animationId);
+    setTimeout(function(){ window.location.href = "main.html" })
+  }
+  renderer.render(scene, camera);
+}
+
+function updateCamera() {
+  let cameraOffset;
+  if (!ifLoop) {
+    cameraOffset = offset.clone().applyQuaternion(spaceship.quaternion);
+  } else {
+    // Set the camera offset to be right in front of the spaceship
+    const frontOffset = new THREE.Vector3(0, 0, 1); // Adjust the distance as needed
+    cameraOffset = frontOffset.applyQuaternion(spaceship.quaternion);
+  }
+
+  camera.position.copy(spaceship.position).add(cameraOffset);
+  scene.add(spaceshipSphere);
+
+  // Collision with the planet or sky borders
+  if (skyBoardersCollision(spaceship.position) || planetCollision(spaceship)) {
+    camera.lookAt(-spaceship.position.x, -spaceship.position.y, -spaceship.position.z);
+  }
+}
+
+function updateSpaceship() {
+  if (spaceship) {
+    camera.getWorldDirection(direction);
+    spaceshipSphere.position.copy(spaceship.position);
+
+    if (keys.w.pressed) {
+      spaceship.position.add(direction.clone().multiplyScalar(0.15));
+    }
+
+    if (keys.a.pressed) {
+      spaceship.position.sub(direction.clone().cross(spaceship.up).multiplyScalar(0.05));
+      spaceship.rotation.z -= Math.PI / 32;
+    } else if (keys.d.pressed) {
+      spaceship.position.add(direction.clone().cross(spaceship.up).multiplyScalar(0.05));
+      spaceship.rotation.z += Math.PI / 32;
+    }
+    spaceship.position.add(direction.clone().multiplyScalar(0.05));
+
+    // Rotate spaceship towards the camera direction
+    const targetQuaternion = new THREE.Quaternion().setFromRotationMatrix(
+      new THREE.Matrix4().lookAt(spaceship.position.clone().add(direction), spaceship.position, spaceship.up)
+    );
+    spaceship.quaternion.slerp(targetQuaternion, 0.1); // 0.1 is a lerp factor, adjust for smoother or sharper transitions
+  }
+}
+
+function updateProjectiles() {
+  projectiles.forEach(async (projectile, projectileIndex) => {
+    if (projectile) {
+      projectile.position.add(projectile.velocity);
+
+      // Check collision with enemies
+      enemies.forEach(async (enemyDroid, enemyIndex) => {
+        const distance = enemyDroid.position.distanceTo(projectile.position);
+        const combinedRadius = enemyDroidSphere.geometry.parameters.radius + bulletGeometry.parameters.radius;
+        if(enemyDroid.health<=0){
+          incrementScore();
+          localStorage.setItem('myNumber', parseInt(document.querySelector('.score').textContent))
+          scene.remove(enemyDroid);
+          sound.play('ambient', 'explosion'); // explosion sound
+          playExplosionAnimation(textureUrlsExplosion, 50, 500, enemyDroid.position);
+          enemies.splice(enemyIndex, 1);
+          scene.remove(enemyDroid.meshEnemyMark)
+          await createEnemy();
+        }
+        if (distance <= combinedRadius) {
+          // Remove enemy from scene and enemies array
+          //sound.play('ambient', 'hit');
+          playExplosionAnimation(textureUrlsExplosion, 10, 500, projectile.position);
+          enemyDroid.health-=50
+          scene.remove(projectile);
+          projectiles.splice(projectileIndex, 1);
+        }
+      });
+
+      // Check collision with spaceship
+      const distanceToSpaceship = spaceship.position.distanceTo(projectile.position);
+      const combinedRadiusSpaceship = spaceshipSphere.geometry.parameters.radius + bulletGeometry.parameters.radius;
+
+      if (distanceToSpaceship <= combinedRadiusSpaceship) {
+        // Handle collision with spaceship here
+        magneticField(spaceship.boundingBox, spaceship, 1, 4)
+        console.log("PENETRATION!!");
+        spaceshipHealth-=10
+      }
+
+// Assume you have a projectile object with a "velocity" property representing its direction and speed.
+      const projectileBox = new THREE.Box3().setFromObject(projectile);
+      // Calculate the vector from the starDestroyer's position to the projectile's position
+      const directionToProjectile = projectile.position.clone().sub(starDestroyer.position).normalize();
+      // Calculate the dot product between the projectile's velocity and the direction to the projectile
+      const dotProduct = directionToProjectile.dot(projectile.velocity);
+      // Check if the projectile's box intersects with the starDestroyer's box and if it's moving towards the starDestroyer
+      if (starDestroyer.boundingBox.intersectsBox(projectileBox) && dotProduct < 0) {
+        // Handle collision with starDestroyer here
+        //sound.play('ambient', 'hit');
+        playExplosionAnimation(textureUrlsExplosion, 10, 500, projectile.position);
+        scene.remove(projectile);
+        projectiles.splice(projectileIndex, 1);
+        magneticField(starDestroyer.boundingBox, starDestroyer, 2.4, 1)
+      }
+      asteroids.forEach(asteroid => {
+        asteroid.boundingBox = new THREE.Box3().setFromObject(asteroid);
+        if (asteroid.boundingBox.intersectsBox(projectileBox)) {
+          playExplosionAnimation(textureUrlsExplosion, 10, 500, projectile.position);
+          scene.remove(projectile);
+          projectiles.splice(projectileIndex, 1);
+        }
+      });
+    }
+  });
+}
+
+
+function incrementScore() {
+  const scoreElement = document.querySelector('.score');
+  if (scoreElement) {
+    const currentScore = parseInt(scoreElement.textContent);
+    const newScore = currentScore + 1;
+    scoreElement.textContent = newScore;
+  }
+}
+
+function updateAimPosition() {
+  if (aimMesh) {
+    const aimPosition = spaceship.position.clone().add(direction.clone().multiplyScalar(17));
+    aimMesh.position.copy(aimPosition).add(new THREE.Vector3(0, 0.7, 0));
+    const aimQuaternion = new THREE.Quaternion().setFromRotationMatrix(
+      new THREE.Matrix4().lookAt(spaceship.position, spaceship.position.clone().add(direction), spaceship.up)
+    );
+    aimMesh.setRotationFromQuaternion(aimQuaternion);
+  }
+}
+
+function updateEnemies() {
+  enemies.forEach(async (enemyDroid) => {
+    if (enemyDroidSphere) {
+      scene.remove(enemyDroidSphere);
+    }
+    enemyDroidSphere = new THREE.Mesh(sphereGeometryDroid, sphereMaterial);
+    scene.add(enemyDroidSphere);
+    enemyDroidSphere.position.y += 2;
+
+    const distance = spaceship.position.distanceTo(enemyDroid.position);
+    if (!enemyDroid.addedToScene) {
+      scene.add(enemyDroid);
+      enemyDroid.addedToScene = true;
+    }
+
+    const combinedRadius = spaceshipSphere.geometry.parameters.radius + enemyDroidSphere.geometry.parameters.radius;
+
+    if (distance <= combinedRadius) {
+      cancelAnimationFrame(animationId);
+      console.log("Collision detected");
+    }
+
+    if (skyBoardersCollision(enemyDroid.position) || planetCollision(enemyDroid) || starDestroyer.position.distanceTo(enemyDroid.position) <200) {
+      const reverseDirection = enemyDroid.flightDirection.clone().negate();
+      enemyDroid.flightDirection.copy(reverseDirection);
+    }
+
+    enemyDroid.lookAt(enemyDroid.flightDirection);
+
+    const displacement = enemyDroid.flightDirection.clone().multiplyScalar(spaceship.speed);
+    enemyDroid.position.add(displacement);
+
+    //marc 
+    if (enemyDroid.meshEnemyMark) {
+      scene.remove(enemyDroid.meshEnemyMark);
+    }
+    enemyDroid.meshEnemyMark = new THREE.Mesh(geometryEnemyMark, materialEnemyMark);
+    enemyDroid.meshEnemyMark.position.copy(enemyDroid.position);
+    enemyDroid.meshEnemyMark.position.y += 7;
+    enemyDroid.meshEnemyMark.lookAt(spaceship.position);
+    scene.add(enemyDroid.meshEnemyMark);
+    //change aim scope
+    updateAimTexture(enemyDroid);
+  });
+}
+
+function updateAsteroids() {
+  if (asteroids) {
+    const spaceshipBoundingBox = calculateBoundingBox(spaceship);
+
+    asteroids.forEach(asteroid => {
+      const movementDirection = new THREE.Vector3(
+        Math.random() - 5,
+        Math.random() - 5,
+        Math.random() - 5
+      );
+      const movementSpeed = 0.001;
+      asteroid.position.add(movementDirection.multiplyScalar(movementSpeed));
+
+      const rotationAxis = new THREE.Vector3(
+        Math.random() - 5,
+        Math.random() - 5,
+        Math.random() - 5
+      ).normalize();
+      const rotationAngle = Math.random() * 0.002;
+      asteroid.rotateOnAxis(rotationAxis, rotationAngle);
+
+      // Calculate the bounding box for the asteroid
+      const asteroidBoundingBox = calculateBoundingBox(asteroid);
+
+      // Check for collision between the spaceship and asteroid
+      if (checkCollisionAsteroid(spaceshipBoundingBox, asteroidBoundingBox)) {
+        console.log("Collision detected!");
+        spaceship.position.sub(direction.clone().multiplyScalar(0.40));
+      }
+    });
+  }
+}
+
+function checkCollisionAsteroid(box1, box2) {
+  // Calculate the minimum and maximum coordinates of the bounding boxes
+  const min1 = box1.position.clone().sub(box1.scale.clone().multiplyScalar(0.5));
+  const max1 = box1.position.clone().add(box1.scale.clone().multiplyScalar(0.5));
+  const min2 = box2.position.clone().sub(box2.scale.clone().multiplyScalar(0.5));
+  const max2 = box2.position.clone().add(box2.scale.clone().multiplyScalar(0.5));
+
+  // Check for overlap along all three axes
+  if (min1.x <= max2.x && max1.x >= min2.x &&
+      min1.y <= max2.y && max1.y >= min2.y &&
+      min1.z <= max2.z && max1.z >= min2.z) {
+    return true; // Collision detected
+  }
+
+  return false; // No collision
+}
+
+function healthBar(){
+  if(planeHealth)scene.remove(planeHealth)
+  geometryHealth = new THREE.PlaneGeometry(spaceshipHealth/100, 0.1);
+  materialHealth = new THREE.MeshBasicMaterial({ color: 'red', side: THREE.DoubleSide});
+  planeHealth = new THREE.Mesh(geometryHealth, materialHealth);
+
+  planeHealth.position.copy(spaceship.position);
+  planeHealth.position.y += 1;
+  planeHealth.rotation.copy(spaceship.rotation);
+  scene.add(planeHealth);
+}
+
+function playExplosionAnimation(images, size, duration, position) {
+  const container = new THREE.Object3D(); // Container for all the image planes
+
+  // Load textures
+  const textureLoader = new THREE.TextureLoader();
+  const textures = images.map((imageUrl) => textureLoader.load(imageUrl));
+
+  // Create image planes and position them
+  textures.forEach((texture, index) => {
+    const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
+    const geometry = new THREE.PlaneGeometry(size, size);
+    const mesh = new THREE.Mesh(geometry, material);
+
+    // Position the image plane based on the index and the specified position
+    mesh.position.copy(position)
+
+    container.add(mesh); // Add the image plane to the container
+  });
+
+  // Animation variables
+  let startTime = performance.now();
+  let currentFrame = 0;
+
+  // Function to update the animation
+  function updateAnimation() {
+    const elapsedTime = performance.now() - startTime;
+    const progress = elapsedTime / duration;
+    const frameIndex = Math.floor(progress * textures.length);
+
+    // Update the visibility of the image planes based on the current frame
+    container.children.forEach((mesh, index) => {
+      mesh.visible = index <= frameIndex;
+      mesh.lookAt(spaceship.position)
+    });
+
+    if (frameIndex !== currentFrame) {
+      currentFrame = frameIndex;
+      // If you want to apply rotation to each image plane, uncomment the line below
+      // container.rotation.z = Math.random() * Math.PI * 2; // Random rotation on z-axis
+    }
+
+    if (elapsedTime < duration) {
+      requestAnimationFrame(updateAnimation);
+    } else {
+      // Remove the container from the scene after the animation duration
+      scene.remove(container);
+    }
+  }
+
+  // Add the container to the scene
+  scene.add(container);
+
+  // Start the animation
+  updateAnimation();
+}
+
+function updateAimTexture(object) {
+  const aimDirection = new THREE.Vector3(0, 0, -1); // Assuming the aim is initially facing in the negative z-direction
+  aimDirection.applyQuaternion(aimMesh.quaternion); // Apply the aim's quaternion rotation
+
+  const aimToEnemyDirection = new THREE.Vector3().subVectors(object.position, aimMesh.position).normalize();
+
+  // Compare the dot product of the two directions
+  const dotProduct = aimDirection.dot(aimToEnemyDirection);
+
+  if (dotProduct > 0.9991) {
+    console.log("true");
+  } else {
+  }
+}
+function setupImageTextLoop() {
+  const imageUrls = ["img/hero1.png", "img/hero2.png", "img/hero3.png"];
+
+  function createImageText() {
+    const randomIndex = Math.floor(Math.random() * imageUrls.length);
+    const randomImageUrl = imageUrls[randomIndex];
+
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.load(randomImageUrl, (texture) => {
+      const imageMaterial = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 1 });
+      const imageGeometry = new THREE.PlaneGeometry(10, 3);
+      const imageMesh = new THREE.Mesh(imageGeometry, imageMaterial);
+      
+      // Calculate the position of the imageMesh at a distance of 40 from the camera
+      const distance = 50;
+      const position = new THREE.Vector3();
+      position.copy(camera.position).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(distance));
+      imageMesh.position.copy(position);
+      
+      imageMesh.lookAt(camera.position);
+      scene.add(imageMesh);
+
+      setTimeout(() => {
+        scene.remove(imageMesh);
+      }, 5000);
+    });
+  }
+
+  createImageText();
+}
+
+</script>
